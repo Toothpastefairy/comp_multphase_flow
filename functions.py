@@ -153,6 +153,25 @@ class Multiflow:
         mu_eff = self.rho * mixing_length**2 * np.abs(velocity_diff)
 
         return self.mu_0 * np.ones(self.Ny + 2) + mu_eff
+
+
+    def calc_alpha(self, velocity, D_part, rho_part, h):
+        # Determine mass particle
+        R_part = D_part / 2
+        m_part = rho_part * 4 / 3 * np.pi * R_part**3
+
+        # Characteristic fluid time length
+        T_fluid = h / np.mean(velocity)
+        # Particle relaxation time
+        T_part = m_part / (3 * np.pi * self.nu * self.rho * D_part)
+
+        # Define gamma
+        c_gamma = 1
+        sigma_d = 1
+        gamma = c_gamma*T_fluid/(T_fluid+T_part)
+
+        domain = np.where( self.y_wall > D_part)
+
     
 
 
