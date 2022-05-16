@@ -6,17 +6,18 @@ class Multiflow:
 
     def __init__(self,  Ny, y_end, rho, pressure_difference ,pressure_boundary, boundary_condition, mu_0):
         
-        self.Ny = Ny
-        self.y_end = y_end
-        self.rho = rho
-        self.pressure_difference = np.ones(self.Ny) * pressure_difference
-        self.pressure_difference = np.append(self.pressure_difference, pressure_boundary[1])
-        self.pressure_difference = np.append(pressure_boundary[0], self.pressure_difference)
-        self.boundary_condition = boundary_condition
-        self.mu_0 = mu_0
+        self.Ny                     = Ny
+        self.y_end                  = y_end
+        self.rho                    = rho
+        self.pressure_difference    = np.ones(self.Ny) * pressure_difference
+        self.pressure_difference    = np.append(self.pressure_difference, pressure_boundary[1])
+        self.pressure_difference    = np.append(pressure_boundary[0], self.pressure_difference)
+        self.pressure_difference    /= self.rho
+        self.boundary_condition     = boundary_condition
+        self.mu_0                   = mu_0
 
-        self.dy = y_end / Ny
-        self.y = np.linspace(-y_end / 2 - self.dy, y_end / 2 + self.dy, self.Ny + 2)
+        self.dy     = y_end / Ny
+        self.y      = np.linspace((-y_end - self.dy) / 2, (y_end + self.dy) / 2, self.Ny + 2)
         self.y_wall = -np.abs(self.y) + self.y_end / 2
 
         return
