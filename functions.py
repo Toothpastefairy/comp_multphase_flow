@@ -9,7 +9,7 @@ class Multiflow:
         self.Ny = Ny
         self.y_end = y_end
         self.rho = rho
-        self.pressure_difference = pressure_difference
+        self.pressure_difference = np.ones(self.Ny) * pressure_difference
         self.pressure_difference = np.append(self.pressure_difference, pressure_boundary[1])
         self.pressure_difference = np.append(pressure_boundary[0], self.pressure_difference)
         self.boundary_condition = boundary_condition
@@ -22,8 +22,8 @@ class Multiflow:
         return
 
 
-    def calc_mu(self, mu_0, Ny):
-        return mu_0 * np.ones(Ny + 2)
+    def calc_mu(self, mu_0):
+        return mu_0 * np.ones(self.Ny + 2)
 
 
     def diagonal_A(self, mu):
@@ -144,7 +144,7 @@ class Multiflow:
         mixing_length = self.mixing_length_func(velocity, argument_type)
         
         # Determine the velocity gradient
-        velocity_diff = (velocity[2:] - velocity[:-2]) / (y[2:] - y[:-2])
+        velocity_diff = (velocity[2:] - velocity[:-2]) / (self.y[2:] - self.y[:-2])
         velocity_diff = np.append(velocity_diff, velocity_diff[-1])
         velocity_diff = np.append(velocity_diff[0], velocity_diff)
 
@@ -152,8 +152,6 @@ class Multiflow:
         mu_eff = self.rho * mixing_length**2 * np.abs(velocity_diff)
 
         return self.mu_0 * np.ones(self.Ny + 2) + mu_eff
-
-
     
 
 
