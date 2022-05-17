@@ -9,6 +9,7 @@ class Multiflow:
         self.Ny                     = Ny
         self.y_end                  = y_end
         self.rho                    = rho
+        self.pressure_boundary      = pressure_boundary
         self.pressure_difference    = np.ones(self.Ny) * pressure_difference
         self.pressure_difference    = np.append(self.pressure_difference, pressure_boundary[1])
         self.pressure_difference    = np.append(pressure_boundary[0], self.pressure_difference)
@@ -20,6 +21,16 @@ class Multiflow:
         self.y      = np.linspace((-y_end - self.dy) / 2, (y_end + self.dy) / 2, self.Ny + 2)
         self.y_wall = -np.abs(self.y) + self.y_end / 2
 
+        return
+
+
+    def set_pressure_difference(self, pressure_difference, boundaries =None):
+        if boundaries is None:
+            boundaries = self.pressure_boundary
+        
+        self.pressure_difference    = np.ones(self.Ny) * pressure_difference
+        self.pressure_difference    = np.append(self.pressure_difference, boundaries[1])
+        self.pressure_difference    = np.append(boundaries[0], self.pressure_difference)
         return
 
 
@@ -58,7 +69,7 @@ class Multiflow:
 
         # Filling the diagonals into the matrix for comparison
         matrix_A = 1/(self.rho) * sp.diags(diagonals=(diag_A, diag_B, diag_C), offsets=(0,-1,1))
-        matrix_A = sp.dia_matrix(matrix_A)
+        matrix_A = sp.dia_matrix(matrix_A).tocsr()
 
         # Calculating the pressure difference
         pressure_difference = self.pressure_difference
@@ -90,7 +101,7 @@ class Multiflow:
 
         # Filling the diagonals into the matrix for comparison
         matrix_A = 1/(self.rho) * sp.diags(diagonals=(diag_A, diag_B, diag_C), offsets=(0,-1,1))
-        matrix_A = sp.dia_matrix(matrix_A)
+        matrix_A = sp.dia_matrix(matrix_A).tocsr()
         
         # Solving the matrix equations
         solution = la.spsolve(matrix_A, pressure_difference)
