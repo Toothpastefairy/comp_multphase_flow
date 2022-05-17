@@ -139,14 +139,14 @@ class Multiflow:
             argument = -y_plus * np.sqrt(tau_plus) / A
         elif argument_type == "Jones":
             argument = -y_plus * tau_plus / A
-
-        # Apply damping
-        damping = (1 - np.exp(argument))
-
+            
         # Close to the boundary, add Von Driest damping
         mask = self.y_wall/delta99 < labda/kappa
         lm[mask] = kappa * self.y_wall[mask]
-        lm*=damping
+        # Apply damping
+        if argument_type != None:
+            damping = (1 - np.exp(argument))    
+            lm*=damping
 
         return lm
 
