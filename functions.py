@@ -23,6 +23,15 @@ class Multiflow:
 
         return
 
+    
+    def add_particles(self, particle_rho, particle_D, volume_fraction):
+        self.particle_rho = particle_rho
+        self.particle_D = particle_D
+        self.volume_fraction = volume_fraction
+        self.particle_mass = 3/4 * np.pi * (self.particle_D/2)**3 * self.particle_rho
+
+        return
+
 
     def set_pressure_difference(self, pressure_difference, boundaries =None):
         if boundaries is None:
@@ -139,7 +148,7 @@ class Multiflow:
             argument = -y_plus * np.sqrt(tau_plus) / A
         elif argument_type == "Jones":
             argument = -y_plus * tau_plus / A
-            
+
         # Close to the boundary, add Von Driest damping
         mask = self.y_wall/delta99 < labda/kappa
         lm[mask] = kappa * self.y_wall[mask]
@@ -166,22 +175,48 @@ class Multiflow:
         return self.mu_0 * np.ones(self.Ny + 2) + mu_eff
 
 
-    def calc_alpha(self, velocity, D_part, rho_part, h):
-        # Determine mass particle
-        R_part = D_part / 2
-        m_part = rho_part * 4 / 3 * np.pi * R_part**3
+    def calc_alpha(self, velocity, mu):
 
         # Characteristic fluid time length
-        T_fluid = h / np.mean(velocity)
+        T_fluid = self.y_end / np.mean(velocity)
         # Particle relaxation time
-        T_part = m_part / (3 * np.pi * self.nu * self.rho * D_part)
+        T_part = self.particle_mass / (3 * np.pi * self.mu_0 * self.particle_D)
 
         # Define gamma
         c_gamma = 1
         sigma_d = 1
         gamma = c_gamma*T_fluid/(T_fluid+T_part)
+        gamma = 1
 
-        domain = np.where( self.y_wall > D_part)
+        domain = np.where( self.y_wall > self.particle_D)
+
+        nu_tau = mu / self.rho
+
+        # Determine the velocity gradient
+        velocity_diff = (velocity[2:] - velocity[:-2]) / (self.y[2:] - self.y[:-2])
+        velocity_diff = np.append(velocity_diff, velocity_diff[-1])
+        velocity_diff = np.append(velocity_diff[0], velocity_diff)
+
+        # Assumption?????
+        diag_A1 = -(gamma * nu_tau * np.abs(velocity_diff))[0:-1]
+        c = 18 * self.mu_0 / (self.rho * sigma_d * self.particle_D)
+        diag_A2 = -c * (nu_tau[:-1] + nu_tau[1:]) / 2
+        diag_A = diag_A1 + diag_A2
+
+        diag_B1 = (gamma * nu_tau * np.abs(velocity_diff))[1:]
+        diag_B2 = c * (nu_tau[:-1] + nu_tau[1:]) / 2
+        diag_B = diag_B1 + diag_B2
+
+        matrix_A = np.diag(diag_A, k=0) + np.diag(diag_B[:-1], k=1)
+        matrix_A = sp.dia_matrix(matrix_A).tocsr()
+
+        RHS = np.zeros(len(diag_A))
+        #RHS[int(len(RHS)/2)] = 1
+        RHS[-1] = self.volume_fraction/(10*self.dy)
+
+        alpha = la.spsolve(-matrix_A,RHS)
+
+        return alpha
 
     
 
