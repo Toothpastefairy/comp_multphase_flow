@@ -20,6 +20,7 @@ class Multiflow:
         self.dy     = y_end / Ny
         self.y      = np.linspace((-y_end - self.dy) / 2, (y_end + self.dy) / 2, self.Ny + 2)
         self.y_wall = -np.abs(self.y) + self.y_end / 2
+        self.nu_0 = self.mu_0 / self.rho
 
         return
 
@@ -215,9 +216,45 @@ class Multiflow:
         RHS[-1] = self.volume_fraction/(10*self.dy)
 
         alpha = la.spsolve(-matrix_A,RHS)
+        alpha *= self.volume_fraction / np.mean(alpha)
+
 
         return alpha
 
+
+    def calc_alpha2(self, nu_tau, velocity):
+        # le constants
+        g = 9.81
+        sigmad = 1
+        theta = np.pi / 2
+        alpha2 = np.ones(self.Ny + 2)
+        grav = (self.rho - self.particle_rho) * g * np.sin(theta)
+        grav = 0
+        
+        # Characteristic fluid time length
+        T_fluid = self.y_end / np.mean(velocity)
+        # Particle relaxation time
+        T_part = self.particle_mass / (3 * np.pi * self.mu_0 * self.particle_D)
+
+        # Define gamma
+        c_gamma = 1
+        gamma = c_gamma*T_fluid/(T_fluid+T_part) * np.ones(self.Ny+2)
+
+        # solve alpha iteratively
+        for i in range(2, self.Ny + 1):
+            nom = grav - self.particle_rho * ((gamma[i] + gamma[i+1]) / 2 * nu_tau[i] * np.abs(velocity[i+1] - velocity[i]) / self.dy) / (2*self.dy)
+            denom = self.particle_rho * ((gamma[i-1] + gamma[i]) / 2 * nu_tau[i-1] * np.abs(velocity[i] - velocity[i-1]) / self.dy) + 18 * self.nu_0 / self.particle_D**2 * self.rho * nu_tau[i-1] / sigmad
+
+            alpha2[i+1] = alpha2[i] * np.exp((nom / denom )* self.dy)
+
+
+        # no particles on impossible wall
+        alpha2[self.y_wall < self.particle_D/2] = 0
+        
+        # scale alpha2 to volume fraction
+        alpha2 *= self.volume_fraction / np.mean(alpha2)
+
+        return alpha2
     
 
 
