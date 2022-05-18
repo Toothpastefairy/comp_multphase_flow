@@ -279,3 +279,38 @@ def TDMAsolver(a, b, c, d):
             xc[i] = (dc[i]-cc[i]*xc[i+1])/bc[i]
 
         return xc
+    
+def simulate_particles(boundary_Condition, mu, pressure, press_bound, alpha2):
+  global dy, rho
+  
+  # Calculating the diagonals
+  factorA = 1/rho * (alpha2[2:]+alpha2[1:-1])/2 * (mu[2:]+mu[1:-1])/2
+  factorB = - 1/rho * (alpha2[1:-1]+alpha2[:-2])/2 * (mu[1:-1]+mu[:-2])/2
+
+  centre_diag = np.zeros(len(mu))
+  centre_diag[1:-1] = (factorB-factorA)/dy
+  centre_diag[0] = boundary_Condition[0]
+  centre_diag[-1] = boundary_Condition[1]
+
+  up_diag = np.zeros(len(mu)-1)
+  up_diag[0:-1] = factorA/dy
+  up_diag[-1] = 1
+
+  low_diag = np.zeros(len(mu)-1)
+  low_diag[1:] = -factorB/dy
+  low_diag[0] = 1
+
+  # Filling the diagonals into the matrix for comparison
+  matrix_A = 1/(rho) * sp.diags(diagonals=(centre_diag, low_diag, up_diag), offsets=(0,-1,1))
+
+  # Calculating the pressure difference
+  rhs = np.zeros(len(mu))
+  rhs[1:-1] = (alpha2[2:]+alpha2[1:-1])/2 * (pressure[2:]-pressure[1:-1])/dy - (alpha2[1:-1]+alpha2[:-2])/2 * (pressure[1:-1]-pressure[:-2])/dy
+  rhs[0] = 2*press_bound[0]
+  rhs[-1] = 2*press_bound[1]
+
+
+  solution = la.spsolve(matrix_A, rhs)
+  #solution = TDMAsolver(low_diag, centre_diag, up_diag, pressure_difference)
+
+  return solution
