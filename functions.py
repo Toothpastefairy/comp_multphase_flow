@@ -350,11 +350,6 @@ class Multiflow:
 
         return alpha2
 
-    
-    
-
-    
-
 
 def TDMAsolver(a, b, c, d):
         # copying the arrays so they can be overwritten
