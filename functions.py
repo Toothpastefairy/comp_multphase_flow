@@ -4,7 +4,7 @@ import scipy.sparse.linalg as la
 
 class Multiflow:
 
-    def __init__(self,  Ny, y_end, rho, pressure_difference ,pressure_boundary, boundary_condition, mu_0):
+    def __init__(self,  Ny, y_end, rho, pressure_difference ,pressure_boundary, boundary_condition, mu_0, angle):
         
         self.Ny                     = Ny
         self.y_end                  = y_end
@@ -16,6 +16,7 @@ class Multiflow:
         self.pressure_difference    /= self.rho
         self.boundary_condition     = boundary_condition
         self.mu_0                   = mu_0
+        self.theta                  = angle
 
         self.dy     = y_end / Ny
         self.y      = np.linspace((-y_end - self.dy) / 2, (y_end + self.dy) / 2, self.Ny + 2)
@@ -119,42 +120,26 @@ class Multiflow:
 
         return solution
 
-    def simulate_particles(self, mu1, alpha2):
-        # Merge alpha to centres
-        mu = (mu1[1:]+mu1[:-1])/2
 
+    def simulate_particles(self, mu, alpha):
+
+        mu = mu * alpha
+        
         # Calculating the diagonals
-        factorA = 1/self.rho_particle * (alpha2[2:]+alpha2[1:-1])/2 * (mu[2:]+mu[1:-1])/2
-        factorB = - 1/self.rho_particle * (alpha2[1:-1]+alpha2[:-2])/2 * (mu[1:-1]+mu[:-2])/2
-
-        centre_diag = np.zeros(len(mu))
-        centre_diag[1:-1] = (factorB-factorA)/self.dy
-        centre_diag[0] = self.boundary_condition[0]
-        centre_diag[-1] = self.boundary_condition[1]
-
-        up_diag = np.zeros(len(mu)-1)
-        up_diag[0:-1] = factorA/self.dy
-        up_diag[-1] = 1
-
-        low_diag = np.zeros(len(mu)-1)
-        low_diag[1:] = -factorB/self.dy
-        low_diag[0] = 1
+        diag_A = self.diagonal_A(mu) / self.dy
+        diag_B = self.diagonal_B(mu) / self.dy
+        diag_C = self.diagonal_C(mu) / self.dy
 
         # Filling the diagonals into the matrix for comparison
-        matrix_A = 1/(self.rho_particle) * sp.diags(diagonals=(centre_diag, low_diag, up_diag), offsets=(0,-1,1))
+        matrix_A = 1/(self.rho) * sp.diags(diagonals=(diag_A, diag_B, diag_C), offsets=(0,-1,1))
         matrix_A = sp.dia_matrix(matrix_A).tocsr()
 
-
         # Calculating the pressure difference
-        rhs = self.pressure_difference * alpha2
-        # rhs = np.zeros(len(mu))
-        # rhs[1:-1] = (alpha2[2:]+alpha2[1:-1])/2 * (pressure[2:]-pressure[1:-1])/self.dy - (alpha2[1:-1]+alpha2[:-2])/2 * (pressure[1:-1]-pressure[:-2])/self.dy
-        # rhs[0] = 2*self.press_bound[0]
-        # rhs[-1] = 2*self.press_bound[1]
-
-
-        solution = la.spsolve(matrix_A, rhs)
-        #solution = TDMAsolver(low_diag, centre_diag, up_diag, pressure_difference)
+        pressure_difference = self.pressure_difference
+        
+        # Solving the matrix equations
+        solution = la.spsolve(matrix_A, pressure_difference)
+        # solution = TDMAsolver(diag_B, diag_A, diag_C, pressure_difference)
 
         return solution
 
@@ -226,9 +211,7 @@ class Multiflow:
         c_gamma = 1
         sigma_d = 1
         gamma = c_gamma*T_fluid/(T_fluid+T_part)
-        gamma = 1
-
-        domain = np.where( self.y_wall > self.particle_D)
+        # gamma = 1
 
         nu_tau = mu / self.rho
 
@@ -237,9 +220,10 @@ class Multiflow:
         velocity_diff = np.append(velocity_diff, velocity_diff[-1])
         velocity_diff = np.append(velocity_diff[0], velocity_diff)
 
-        # Assumption?????
-        diag_A1 = -(gamma * nu_tau * np.abs(velocity_diff))[0:-1]
+        # discretization of formula
         c = 18 * self.mu_0 / (self.rho * sigma_d * self.particle_D)
+
+        diag_A1 = -(gamma * nu_tau * np.abs(velocity_diff))[0:-1]
         diag_A2 = -c * (nu_tau[:-1] + nu_tau[1:]) / 2
         diag_A = diag_A1 + diag_A2
 
@@ -249,13 +233,14 @@ class Multiflow:
 
         matrix_A = np.diag(diag_A, k=0) + np.diag(diag_B[:-1], k=1)
         matrix_A = sp.dia_matrix(matrix_A).tocsr()
+        print(matrix_A.A)
 
         RHS = np.zeros(len(diag_A))
         #RHS[int(len(RHS)/2)] = 1
         RHS[-1] = self.volume_fraction/(10*self.dy)
 
         alpha = la.spsolve(-matrix_A,RHS)
-        alpha *= self.volume_fraction / np.mean(alpha)
+        alpha *= self.volume_fraction / np.max(alpha)
 
 
         return alpha
@@ -265,9 +250,8 @@ class Multiflow:
         # le constants
         g = 9.81
         sigmad = 1
-        theta = np.pi / 2
         alpha2 = np.ones(self.Ny + 2)
-        grav = (self.rho - self.rho_particle) * g * np.sin(theta)
+        grav = (self.rho - self.rho_particle) * g * np.sin(self.theta)
         grav = 0
         
         # Characteristic fluid time length
@@ -284,6 +268,8 @@ class Multiflow:
             nom = grav - self.rho_particle * ((gamma[i] + gamma[i+1]) / 2 * nu_tau[i] * np.abs(velocity[i+1] - velocity[i]) / self.dy) / (2*self.dy)
             denom = self.rho_particle * ((gamma[i-1] + gamma[i]) / 2 * nu_tau[i-1] * np.abs(velocity[i] - velocity[i-1]) / self.dy) + 18 * self.nu_0 / self.particle_D**2 * self.rho * nu_tau[i-1] / sigmad
 
+            print(nom/denom)
+            print(alpha2[i])
             alpha2[i+1] = alpha2[i] * np.exp((nom / denom )* self.dy)
 
 
@@ -294,6 +280,79 @@ class Multiflow:
         alpha2 *= self.volume_fraction / np.mean(alpha2)
 
         return alpha2
+
+
+    def calc_alpha3(self, velocity, mu):
+
+        # le constants
+        g = 9.81
+        sigmad = 1
+        alpha2 = np.ones(self.Ny + 2)
+        velocity_diff = np.abs(velocity[1:] - velocity[:-1]) / self.dy
+
+        # nu
+        nu_turbulent = (mu - self.mu_0) / self.rho
+        mu_edges = (mu[1:] + mu[:-1]) / 2
+        
+        # Characteristic fluid time length
+        T_fluid = self.y_end / np.mean(velocity)
+        # Particle relaxation time
+        T_part = self.rho_particle * self.particle_D**2 / (18 * mu_edges)
+
+        # Define gamma
+        particle_stokes = T_part * velocity_diff
+        gamma = 1 / (1 + particle_stokes)
+        gamma_edges = (gamma[:-1] + gamma[1:]) / 2
+
+        # Calculation first values
+        alpha2[0] = 1
+
+        Re_inf = (velocity[2] - velocity[1]) / self.dy * self.particle_D**2 / self.nu_0
+        nom1 = 4.21 * self.rho * self.nu_0**2 * Re_inf
+        nom2 = (self.rho - self.rho_particle) * g * np.sin(self.theta)
+        nom3 = -self.rho_particle * (gamma_edges[2] * (nu_turbulent[2]) * velocity_diff[2]) / (2 * self.dy)  
+
+        denom1 = self.rho_particle * (gamma_edges[0] / 2 * nu_turbulent[1] * np.abs(velocity[2] - velocity[1]) / self.dy)
+        denom2 = 18 * self.nu_0 / self.particle_D**2 * self.rho * nu_turbulent[1] / sigmad
+
+        alpha2[1] = alpha2[0] * np.exp((nom1 + nom2 + nom3 / (denom1 + denom2)) * self.dy)
+
+        # solve alpha iteratively
+        for i in range(2, self.Ny - 1):
+            Re_inf = (velocity[i+1] - velocity[i]) / self.dy * self.particle_D**2 / self.nu_0
+            nom1 = 4.21 * self.rho * self.nu_0**2 * Re_inf
+            nom2 = (self.rho - self.rho_particle) * g * np.sin(self.theta)
+            nom3 = -self.rho_particle * (gamma_edges[i] * (nu_turbulent[i+1]) * velocity_diff[i+1] -
+                                         (gamma_edges[i-2]) / 2 *nu_turbulent[i-1] * velocity_diff[i-1]) / (2 * self.dy)  
+
+            denom1 = self.rho_particle * ((gamma[i-1] + gamma[i]) / 2 * nu_turbulent[i] * np.abs(velocity[i+1] - velocity[i]) / self.dy)
+            denom2 = 18 * self.nu_0 / self.particle_D**2 * self.rho * nu_turbulent[i] / sigmad
+
+            alpha2[i+1] = alpha2[i] * np.exp((nom1 + nom2 + nom3 / (denom1 + denom2)) * self.dy)
+
+        # Calculation last value
+        i = self.Ny
+        Re_inf = (velocity[i+1] - velocity[i]) / self.dy * self.particle_D**2 / self.nu_0
+        nom1 = 4.21 * self.rho * self.nu_0**2 * Re_inf
+        nom2 = (self.rho - self.rho_particle) * g * np.sin(self.theta)
+        nom3 = -self.rho_particle * ( -(gamma_edges[i-2]) / 2 *nu_turbulent[i-1] * velocity_diff[i-1]) / (2 * self.dy)  
+
+        denom1 = self.rho_particle * ((gamma[i-1] + gamma[i]) / 2 * nu_turbulent[i] * np.abs(velocity[i+1] - velocity[i]) / self.dy)
+        denom2 = 18 * self.nu_0 / self.particle_D**2 * self.rho * nu_turbulent[i] / sigmad
+
+        alpha2[i] = alpha2[i-1] * np.exp((nom1 + nom2 + nom3 / (denom1 + denom2)) * self.dy)
+        # no particles on impossible wall
+        alpha2[self.y_wall < self.particle_D/2] = 0
+        
+        # scale alpha2 to volume fraction
+        factor = 1 / self.y_end * self.dy * np.trapz(alpha2) / self.volume_fraction
+        alpha2 /= factor
+
+        return alpha2
+
+    
+    
+
     
 
 
