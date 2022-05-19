@@ -25,11 +25,11 @@ class Multiflow:
         return
 
     
-    def add_particles(self, particle_rho, particle_D, volume_fraction):
-        self.particle_rho = particle_rho
+    def add_particles(self, rho_particle, particle_D, volume_fraction):
+        self.rho_particle = rho_particle
         self.particle_D = particle_D
         self.volume_fraction = volume_fraction
-        self.particle_mass = 3/4 * np.pi * (self.particle_D/2)**3 * self.particle_rho
+        self.particle_mass = 3/4 * np.pi * (self.particle_D/2)**3 * self.rho_particle
 
         return
 
@@ -116,6 +116,45 @@ class Multiflow:
         # Solving the matrix equations
         solution = la.spsolve(matrix_A, pressure_difference)
         #solution = TDMAsolver(diag_B, diag_A, diag_C, pressure_difference)
+
+        return solution
+
+    def simulate_particles(self, mu1, alpha2):
+        # Merge alpha to centres
+        mu = (mu1[1:]+mu1[:-1])/2
+
+        # Calculating the diagonals
+        factorA = 1/self.rho_particle * (alpha2[2:]+alpha2[1:-1])/2 * (mu[2:]+mu[1:-1])/2
+        factorB = - 1/self.rho_particle * (alpha2[1:-1]+alpha2[:-2])/2 * (mu[1:-1]+mu[:-2])/2
+
+        centre_diag = np.zeros(len(mu))
+        centre_diag[1:-1] = (factorB-factorA)/self.dy
+        centre_diag[0] = self.boundary_condition[0]
+        centre_diag[-1] = self.boundary_condition[1]
+
+        up_diag = np.zeros(len(mu)-1)
+        up_diag[0:-1] = factorA/self.dy
+        up_diag[-1] = 1
+
+        low_diag = np.zeros(len(mu)-1)
+        low_diag[1:] = -factorB/self.dy
+        low_diag[0] = 1
+
+        # Filling the diagonals into the matrix for comparison
+        matrix_A = 1/(self.rho_particle) * sp.diags(diagonals=(centre_diag, low_diag, up_diag), offsets=(0,-1,1))
+        matrix_A = sp.dia_matrix(matrix_A).tocsr()
+
+
+        # Calculating the pressure difference
+        rhs = self.pressure_difference * alpha2
+        # rhs = np.zeros(len(mu))
+        # rhs[1:-1] = (alpha2[2:]+alpha2[1:-1])/2 * (pressure[2:]-pressure[1:-1])/self.dy - (alpha2[1:-1]+alpha2[:-2])/2 * (pressure[1:-1]-pressure[:-2])/self.dy
+        # rhs[0] = 2*self.press_bound[0]
+        # rhs[-1] = 2*self.press_bound[1]
+
+
+        solution = la.spsolve(matrix_A, rhs)
+        #solution = TDMAsolver(low_diag, centre_diag, up_diag, pressure_difference)
 
         return solution
 
@@ -228,7 +267,7 @@ class Multiflow:
         sigmad = 1
         theta = np.pi / 2
         alpha2 = np.ones(self.Ny + 2)
-        grav = (self.rho - self.particle_rho) * g * np.sin(theta)
+        grav = (self.rho - self.rho_particle) * g * np.sin(theta)
         grav = 0
         
         # Characteristic fluid time length
@@ -242,8 +281,8 @@ class Multiflow:
 
         # solve alpha iteratively
         for i in range(2, self.Ny + 1):
-            nom = grav - self.particle_rho * ((gamma[i] + gamma[i+1]) / 2 * nu_tau[i] * np.abs(velocity[i+1] - velocity[i]) / self.dy) / (2*self.dy)
-            denom = self.particle_rho * ((gamma[i-1] + gamma[i]) / 2 * nu_tau[i-1] * np.abs(velocity[i] - velocity[i-1]) / self.dy) + 18 * self.nu_0 / self.particle_D**2 * self.rho * nu_tau[i-1] / sigmad
+            nom = grav - self.rho_particle * ((gamma[i] + gamma[i+1]) / 2 * nu_tau[i] * np.abs(velocity[i+1] - velocity[i]) / self.dy) / (2*self.dy)
+            denom = self.rho_particle * ((gamma[i-1] + gamma[i]) / 2 * nu_tau[i-1] * np.abs(velocity[i] - velocity[i-1]) / self.dy) + 18 * self.nu_0 / self.particle_D**2 * self.rho * nu_tau[i-1] / sigmad
 
             alpha2[i+1] = alpha2[i] * np.exp((nom / denom )* self.dy)
 
@@ -280,37 +319,4 @@ def TDMAsolver(a, b, c, d):
 
         return xc
     
-def simulate_particles(boundary_Condition, mu, pressure, press_bound, alpha2):
-        global dy, rho
-
-        # Calculating the diagonals
-        factorA = 1/rho * (alpha2[2:]+alpha2[1:-1])/2 * (mu[2:]+mu[1:-1])/2
-        factorB = - 1/rho * (alpha2[1:-1]+alpha2[:-2])/2 * (mu[1:-1]+mu[:-2])/2
-
-        centre_diag = np.zeros(len(mu))
-        centre_diag[1:-1] = (factorB-factorA)/dy
-        centre_diag[0] = boundary_Condition[0]
-        centre_diag[-1] = boundary_Condition[1]
-
-        up_diag = np.zeros(len(mu)-1)
-        up_diag[0:-1] = factorA/dy
-        up_diag[-1] = 1
-
-        low_diag = np.zeros(len(mu)-1)
-        low_diag[1:] = -factorB/dy
-        low_diag[0] = 1
-
-        # Filling the diagonals into the matrix for comparison
-        matrix_A = 1/(rho) * sp.diags(diagonals=(centre_diag, low_diag, up_diag), offsets=(0,-1,1))
-
-        # Calculating the pressure difference
-        rhs = np.zeros(len(mu))
-        rhs[1:-1] = (alpha2[2:]+alpha2[1:-1])/2 * (pressure[2:]-pressure[1:-1])/dy - (alpha2[1:-1]+alpha2[:-2])/2 * (pressure[1:-1]-pressure[:-2])/dy
-        rhs[0] = 2*press_bound[0]
-        rhs[-1] = 2*press_bound[1]
-
-
-        solution = la.spsolve(matrix_A, rhs)
-        #solution = TDMAsolver(low_diag, centre_diag, up_diag, pressure_difference)
-
-        return solution
+    
