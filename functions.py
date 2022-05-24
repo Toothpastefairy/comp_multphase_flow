@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 import scipy.sparse as sp
 import scipy.sparse.linalg as la
 
@@ -121,7 +122,7 @@ class Multiflow:
         return solution
 
 
-    def simulate_particles(self, mu, alpha):
+    def simulate_with_particles(self, mu, alpha):
 
         mu = mu * alpha
         
@@ -202,88 +203,6 @@ class Multiflow:
 
     def calc_alpha(self, velocity, mu):
 
-        # Characteristic fluid time length
-        T_fluid = self.y_end / np.mean(velocity)
-        # Particle relaxation time
-        T_part = self.particle_mass / (3 * np.pi * self.mu_0 * self.particle_D)
-
-        # Define gamma
-        c_gamma = 1
-        sigma_d = 1
-        gamma = c_gamma*T_fluid/(T_fluid+T_part)
-        # gamma = 1
-
-        nu_tau = mu / self.rho
-
-        # Determine the velocity gradient
-        velocity_diff = (velocity[2:] - velocity[:-2]) / (self.y[2:] - self.y[:-2])
-        velocity_diff = np.append(velocity_diff, velocity_diff[-1])
-        velocity_diff = np.append(velocity_diff[0], velocity_diff)
-
-        # discretization of formula
-        c = 18 * self.mu_0 / (self.rho * sigma_d * self.particle_D)
-
-        diag_A1 = -(gamma * nu_tau * np.abs(velocity_diff))[0:-1]
-        diag_A2 = -c * (nu_tau[:-1] + nu_tau[1:]) / 2
-        diag_A = diag_A1 + diag_A2
-
-        diag_B1 = (gamma * nu_tau * np.abs(velocity_diff))[1:]
-        diag_B2 = c * (nu_tau[:-1] + nu_tau[1:]) / 2
-        diag_B = diag_B1 + diag_B2
-
-        matrix_A = np.diag(diag_A, k=0) + np.diag(diag_B[:-1], k=1)
-        matrix_A = sp.dia_matrix(matrix_A).tocsr()
-        print(matrix_A.A)
-
-        RHS = np.zeros(len(diag_A))
-        #RHS[int(len(RHS)/2)] = 1
-        RHS[-1] = self.volume_fraction/(10*self.dy)
-
-        alpha = la.spsolve(-matrix_A,RHS)
-        alpha *= self.volume_fraction / np.max(alpha)
-
-
-        return alpha
-
-
-    def calc_alpha2(self, nu_tau, velocity):
-        # le constants
-        g = 9.81
-        sigmad = 1
-        alpha2 = np.ones(self.Ny + 2)
-        grav = (self.rho - self.rho_particle) * g * np.sin(self.theta)
-        grav = 0
-        
-        # Characteristic fluid time length
-        T_fluid = self.y_end / np.mean(velocity)
-        # Particle relaxation time
-        T_part = self.particle_mass / (3 * np.pi * self.mu_0 * self.particle_D)
-
-        # Define gamma
-        c_gamma = 1
-        gamma = c_gamma*T_fluid/(T_fluid+T_part) * np.ones(self.Ny+2)
-
-        # solve alpha iteratively
-        for i in range(2, self.Ny + 1):
-            nom = grav - self.rho_particle * ((gamma[i] + gamma[i+1]) / 2 * nu_tau[i] * np.abs(velocity[i+1] - velocity[i]) / self.dy) / (2*self.dy)
-            denom = self.rho_particle * ((gamma[i-1] + gamma[i]) / 2 * nu_tau[i-1] * np.abs(velocity[i] - velocity[i-1]) / self.dy) + 18 * self.nu_0 / self.particle_D**2 * self.rho * nu_tau[i-1] / sigmad
-
-            print(nom/denom)
-            print(alpha2[i])
-            alpha2[i+1] = alpha2[i] * np.exp((nom / denom )* self.dy)
-
-
-        # no particles on impossible wall
-        alpha2[self.y_wall < self.particle_D/2] = 0
-        
-        # scale alpha2 to volume fraction
-        alpha2 *= self.volume_fraction / np.mean(alpha2)
-
-        return alpha2
-
-
-    def calc_alpha3(self, velocity, mu):
-
         # le constants
         g = 9.81
         sigmad = 1
@@ -302,7 +221,7 @@ class Multiflow:
         # Define gamma
         particle_stokes = T_part * velocity_diff
         gamma = 1 / (1 + particle_stokes)
-        gamma_edges = (gamma[:-1] + gamma[1:]) / 2
+        gamma_center = (gamma[:-1] + gamma[1:]) / 2
 
         # Calculation first values
         alpha2[0] = 1
@@ -310,9 +229,9 @@ class Multiflow:
         Re_inf = (velocity[2] - velocity[1]) / self.dy * self.particle_D**2 / self.nu_0
         nom1 = 4.21 * self.rho * self.nu_0**2 * Re_inf
         nom2 = (self.rho - self.rho_particle) * g * np.sin(self.theta)
-        nom3 = -self.rho_particle * (gamma_edges[2] * (nu_turbulent[2]) * velocity_diff[2]) / (2 * self.dy)  
+        nom3 = -self.rho_particle * (gamma_center[2] * (nu_turbulent[2]) * velocity_diff[2]) / (2 * self.dy)  
 
-        denom1 = self.rho_particle * (gamma_edges[0] / 2 * nu_turbulent[1] * np.abs(velocity[2] - velocity[1]) / self.dy)
+        denom1 = self.rho_particle * (gamma_center[0] / 2 * nu_turbulent[1] * np.abs(velocity[2] - velocity[1]) / self.dy)
         denom2 = 18 * self.nu_0 / self.particle_D**2 * self.rho * nu_turbulent[1] / sigmad
 
         alpha2[1] = alpha2[0] * np.exp((nom1 + nom2 + nom3 / (denom1 + denom2)) * self.dy)
@@ -322,8 +241,8 @@ class Multiflow:
             Re_inf = (velocity[i+1] - velocity[i]) / self.dy * self.particle_D**2 / self.nu_0
             nom1 = 4.21 * self.rho * self.nu_0**2 * Re_inf
             nom2 = (self.rho - self.rho_particle) * g * np.sin(self.theta)
-            nom3 = -self.rho_particle * (gamma_edges[i] * (nu_turbulent[i+1]) * velocity_diff[i+1] -
-                                         (gamma_edges[i-2]) / 2 *nu_turbulent[i-1] * velocity_diff[i-1]) / (2 * self.dy)  
+            nom3 = -self.rho_particle * (gamma_center[i] * (nu_turbulent[i+1]) * velocity_diff[i+1] -
+                                         (gamma_center[i-2]) / 2 *nu_turbulent[i-1] * velocity_diff[i-1]) / (2 * self.dy)  
 
             denom1 = self.rho_particle * ((gamma[i-1] + gamma[i]) / 2 * nu_turbulent[i] * np.abs(velocity[i+1] - velocity[i]) / self.dy)
             denom2 = 18 * self.nu_0 / self.particle_D**2 * self.rho * nu_turbulent[i] / sigmad
@@ -335,20 +254,81 @@ class Multiflow:
         Re_inf = (velocity[i+1] - velocity[i]) / self.dy * self.particle_D**2 / self.nu_0
         nom1 = 4.21 * self.rho * self.nu_0**2 * Re_inf
         nom2 = (self.rho - self.rho_particle) * g * np.sin(self.theta)
-        nom3 = -self.rho_particle * ( -(gamma_edges[i-2]) / 2 *nu_turbulent[i-1] * velocity_diff[i-1]) / (2 * self.dy)  
+        nom3 = -self.rho_particle * ( -(gamma_center[i-2]) / 2 *nu_turbulent[i-1] * velocity_diff[i-1]) / (2 * self.dy)  
 
         denom1 = self.rho_particle * ((gamma[i-1] + gamma[i]) / 2 * nu_turbulent[i] * np.abs(velocity[i+1] - velocity[i]) / self.dy)
         denom2 = 18 * self.nu_0 / self.particle_D**2 * self.rho * nu_turbulent[i] / sigmad
 
         alpha2[i] = alpha2[i-1] * np.exp((nom1 + nom2 + nom3 / (denom1 + denom2)) * self.dy)
         # no particles on impossible wall
-        alpha2[self.y_wall < self.particle_D/2] = 0
+        alpha2[self.y_wall < self.particle_D] = 0
         
         # scale alpha2 to volume fraction
         factor = 1 / self.y_end * self.dy * np.trapz(alpha2) / self.volume_fraction
         alpha2 /= factor
 
         return alpha2
+
+
+    def solve_particle_velocity(self, alpha_particles, velocity_plasma, mu):
+        # Define constants
+        g = 9.81
+
+        # Determine velocity gradient and alpha gradient
+        velocity_diff = (velocity_plasma[1:] - velocity_plasma[:-1]) / self.dy
+        vel_diff_center = (velocity_diff[1:] + velocity_diff[:-1]) / 2
+
+        alpha_diff = (alpha_particles[1:] - alpha_particles[:-1]) / self.dy
+        alpha_diff_center = (alpha_diff[1:] + alpha_diff[:-1]) / 2
+        alpha_edges = (alpha_particles[1:] + alpha_particles[:-1])/2
+
+        # Find mu at the edges
+        mu_edges = (mu[1:] + mu[:-1]) / 2
+
+        # Define Gamma
+        T_part = self.rho_particle * self.particle_D**2 / (18 * mu_edges)
+        particle_stokes = T_part * velocity_diff
+        gamma_edges = 1 / (1 + particle_stokes)
+        gamma_center = (gamma_edges[:-1] + gamma_edges[1:]) / 2
+
+        # Define nu_t and nu
+        nu_turbulent = (mu - self.mu_0) / self.rho
+        nu_t = nu_turbulent - self.nu_0
+        nu_t_edge = (nu_t[:-1] + nu_t[1:]) / 2
+
+        reynolds_particle = np.zeros(self.Ny)
+        f_particle = 1 + 0.5 * reynolds_particle**0.687
+
+        error = 1
+        epsilon = 1e-6
+        velocity_particles_old = np.copy(velocity_plasma[1:-1])
+
+        i = 0
+        while error > epsilon:
+            velocity_particles_new = velocity_plasma[1:-1] - (1 / (18 * alpha_particles[1:-1] * f_particle * self.nu_0 / self.particle_D**2)) * \
+                                 (self.rho_particle * alpha_edges[:-1] * gamma_edges[:-1] * nu_t_edge[:-1] * velocity_diff[:-1]
+                                 - self.rho_particle * alpha_edges[1:] * gamma_edges[1:] * nu_t_edge[1:] * velocity_diff[1:]
+                                 + alpha_particles[1:-1] * (self.rho_particle - self.rho) * g * np.cos(self.theta))
+
+            velocity_particles_new[alpha_particles[1:-1] == 0] = 0
+
+            reynolds_particle = np.abs(velocity_particles_new - velocity_plasma[1:-1]) * self.particle_D / self.nu_0
+            # print(reynolds_particle, reynolds_particle**(0.678))
+            f_particle = 1 + 0.5 * reynolds_particle**(0.678)
+            # print(f_particle, reynolds_particle)
+
+            error = np.sum(np.abs(velocity_particles_new - velocity_particles_old)) / np.sum(velocity_particles_old)
+            velocity_particles_old = np.copy(velocity_particles_new)
+
+            i+=1
+            print("iteration", i, "with error", error, end='\r')
+
+            if i > 2000:
+                print("Oh nyo, it's bwoken")
+                break
+
+        return velocity_particles_new
+
 
 
 def TDMAsolver(a, b, c, d):
