@@ -66,6 +66,8 @@ class MultiFlowAxis:
         diag_imin_j = np.zeros_like(diag_i_j)
         diag_imin_j[:,0] = np.ones(self.Nz + 2)
         diag_imin_j[0,:] = np.ones(self.Nr + 2)
+        diag_imin_j[0,0:self.Nr+2] = 0
+
         self.boundary_imin_j = self.make_diagonal(diag_imin_j)[:-1]
 
         # j+ diagonal (Nr + 2 below central)
@@ -96,9 +98,9 @@ class MultiFlowAxis:
     def calc_convective_flux_z(self, velocity_z, velocity_r):
         matrix = np.zeros((self.Nz + 2 , self.Nr+2))
         
-        matrix[1:-1,1:-1] = 0.25*(velocity_r[:-2,2:] + velocity_r[1:-1,2:] - velocity_r[:-2,1:-1] - velocity_r[1:-1,1:-1]) * self.dz + \
+        matrix[1:-1,1:-1] = 0.25*((velocity_r[:-2,2:] + velocity_r[1:-1,2:] - velocity_r[:-2,1:-1] - velocity_r[1:-1,1:-1]) * self.dz + \
                             (velocity_z[1:-1,1:-1] + velocity_z[2:,1:-1]) * self.RZ[1:-1,2:] * self.dr + \
-                            -(velocity_z[:-2,1:-1] + velocity_z[1:-1,1:-1]) * self.RZ[1:-1,1:-1] * self.dr
+                            -(velocity_z[:-2,1:-1] + velocity_z[1:-1,1:-1]) * self.RZ[1:-1,1:-1] * self.dr)
         diag_i_j = self.make_diagonal(matrix)
 
         matrix[1:-1,1:-1] = 0.25*(velocity_z[2:,1:-1] + velocity_z[1:-1,1:-1]) * self.RZ[1:-1,2:] * self.dr
@@ -154,9 +156,9 @@ class MultiFlowAxis:
     def calc_convective_flux_r(self, velocity_z, velocity_r):
         matrix = np.zeros((self.Nz + 2 , self.Nr+2))
 
-        matrix[1:-1,1:-1] = 0.25*(velocity_r[1:-1,2:] - velocity_r[1:-1,:-2]) * self.dz + \
+        matrix[1:-1,1:-1] = 0.25*((velocity_r[1:-1,2:] - velocity_r[1:-1,:-2]) * self.dz + \
                             (velocity_z[2:,1:-1] + velocity_z[2:,:-2]) * self.RR[1:-1,2:] * self.dr + \
-                            -(velocity_z[1:-1,:-2] + velocity_z[1:-1,1:-1]) * self.RR[1:-1,1:-1] * self.dr
+                            -(velocity_z[1:-1,:-2] + velocity_z[1:-1,1:-1]) * self.RR[1:-1,1:-1] * self.dr)
         diag_i_j = self.make_diagonal(matrix)
 
         matrix[1:-1,1:-1] = 0.25*(velocity_z[2:,1:-1] + velocity_z[2:,:-2]) * self.RR[1:-1,2:] * self.dr
@@ -224,7 +226,7 @@ class MultiFlowAxis:
             offsets=(0,1,-1,-self.Nz-2, self.Nz+2)
         )
         matrix_A = sp.dia_matrix(matrix_A).tocsr()
-
+        # print(matrix_A.A)
         # Right hand side
         pressure_gradient_z = self.calc_pressure_gradient_z(pressure)
 
@@ -245,14 +247,12 @@ class MultiFlowAxis:
         diag_i_jplus =  (convective_z[3] + diffusive_z[3])[:-self.Nz-2] + self.boundary_i_jplus
         diag_i_jmin =   (convective_z[4] + diffusive_z[4])[self.Nz+2:] + self.boundary_i_jmin
 
-        print(diag_i_jplus)
-
         matrix_A = sp.diags(
             diagonals=(diag_i_j, diag_imin_j, diag_iplus_j, diag_i_jmin, diag_i_jplus),
             offsets=(0,1,-1,-self.Nz-2, self.Nz+2)
         )
         matrix_A = sp.dia_matrix(matrix_A).tocsr()
-        plt.matshow(matrix_A.A)
+        # plt.matshow(matrix_A.A)
 
         # Right hand side
         pressure_gradient_z = self.calc_pressure_gradient_r(pressure)
@@ -263,17 +263,18 @@ class MultiFlowAxis:
         return new_velocity_r
 
 
-    def recalculate_pressure(self, velocity_z, velocity_r, mu):
+    def pressure_correction(self, velocity_z, velocity_r, mu):
         matrix = np.zeros((self.Nz + 2 , self.Nr+2))
 
         a = np.zeros_like(matrix)
 
         # Convective and diffusive in (i,j) for z-staggered
-        a[1:-1,1:-1] = 0.25*(velocity_r[:-2,2:] + velocity_r[1:-1,2:] - velocity_r[:-2,1:-1] - velocity_r[1:-1,1:-1]) * self.dz + \
+        # convective_z_i_j, _, _, _, _ = self.calc_convective_flux_z(velocity_z, velocity_r)
+        # diffusive_z_i_j, _, _, _, _, = self.calc_diffusive_flux_z(mu)
+        a[1:-1,1:-1] = 0.25*((velocity_r[:-2,2:] + velocity_r[1:-1,2:] - velocity_r[:-2,1:-1] - velocity_r[1:-1,1:-1]) * self.dz + \
                             (velocity_z[1:-1,1:-1] + velocity_z[2:,1:-1]) * self.RZ[1:-1,2:] * self.dr + \
-                            -(velocity_z[:-2,1:-1] + velocity_z[1:-1,1:-1]) * self.RZ[1:-1,1:-1] * self.dr
-
-        a[1:-1,1:-1] += -mu[1:-1,1:-1] * ((self.RZ[1:-1,2:] + self.RZ[1:-1,1:-1]) * self.dr / self.dz + 2 * self.dz / self.dr)
+                            -(velocity_z[:-2,1:-1] + velocity_z[1:-1,1:-1]) * self.RZ[1:-1,1:-1] * self.dr) + \
+                       -mu[1:-1,1:-1] * ((self.RZ[1:-1,2:] + self.RZ[1:-1,1:-1]) * self.dr / self.dz + 2 * self.dz / self.dr)
         
         matrix[1:-1,1:-1] = (self.RR[1:-1,2:] * self.dr)**2 / a[1:-1,1:-1]
         diag_imin_j = self.make_diagonal(matrix)
@@ -286,11 +287,10 @@ class MultiFlowAxis:
         diag_iplus_j = self.make_diagonal(matrix)
 
         # Convective and diffusive in (i,j) for r-staggered
-        a[1:-1,1:-1] =  0.25*(velocity_r[1:-1,2:] - velocity_r[1:-1,:-2]) * self.dz + \
+        a[1:-1,1:-1] =  0.25*((velocity_r[1:-1,2:] - velocity_r[1:-1,:-2]) * self.dz + \
                             (velocity_z[2:,1:-1] + velocity_z[2:,:-2]) * self.RR[1:-1,2:] * self.dr + \
-                            -(velocity_z[1:-1,:-2] + velocity_z[1:-1,1:-1]) * self.RR[1:-1,1:-1] * self.dr
-        a[1:-1,1:-1] += -mu[1:-1,1:-1] * ((self.RR[1:-1,2:] + self.RR[1:-1,1:-1]) * self.dr / self.dz + 2 * self.dz / self.dr)
-
+                            -(velocity_z[1:-1,:-2] + velocity_z[1:-1,1:-1]) * self.RR[1:-1,1:-1] * self.dr) + \
+                        -mu[1:-1,1:-1] * ((self.RR[1:-1,2:] + self.RR[1:-1,1:-1]) * self.dr / self.dz + 2 * self.dz / self.dr)
 
         matrix[1:-1,1:-1] = (self.dz)**2 / a[1:-1,1:-1]
         diag_i_jmin = self.make_diagonal(matrix)
@@ -302,24 +302,36 @@ class MultiFlowAxis:
         matrix[1:-1,1:-1] = self.dz**2 / a[1:-1, 1:-1]
         diag_i_jplus = self.make_diagonal(matrix)   
 
+        # Diagonals for matrix
         diag_i_j = diag_imin_j + diag_iplus_j + diag_i_jmin + diag_i_jplus
+        
+        diag_i_j =      diag_i_j + self.boundary_i_j_r
+        diag_iplus_j =  diag_iplus_j[1:] + self.boundary_iplus_j
+        diag_imin_j =   diag_imin_j[:-1] + self.boundary_imin_j
+        diag_i_jplus =  diag_i_jplus[:-self.Nz-2] + self.boundary_i_jplus
+        diag_i_jmin =   diag_i_jmin[self.Nz+2:] + self.boundary_i_jmin
+
 
         rhs = np.zeros_like(matrix)
-        rhs[1:-1,1:-1] = velocity_z[1:-1,1:-1] * self.RZ[1:-1,1:-1] * self.dr - velocity_z[2:,1:-1] * self.RZ[2:,1:-1] * self.dr + \
-              velocity_r[1:-1,1:-1] * self.dz - velocity_r[1:-1,2:] * self.dz
+        rhs[1:-1,1:-1] = velocity_z[1:-1,1:-1] * self.RZ[1:-1,1:-1] * self.dr - \
+                         velocity_z[2:,1:-1] * self.RZ[2:,1:-1] * self.dr + \
+                         velocity_r[1:-1,1:-1] * self.dz - velocity_r[1:-1,2:] * self.dz
         rhs = self.make_diagonal(rhs) 
 
         matrix_A = sp.diags(
             diagonals=(diag_i_j, -diag_imin_j, -diag_iplus_j, -diag_i_jmin, -diag_i_jplus),
-            offsets=(0,1,-1,-self.Nz-2, self.Nz+2)
+            offsets=(0,1,-1,self.Nz+2, -(self.Nz+2))
         )
 
         matrix_A = sp.dia_matrix(matrix_A).tocsr()
-        plt.matshow(matrix_A.A)
+        # plt.matshow(matrix_A.A)
 
         pressure_correction = la.spsolve(matrix_A, rhs)
         pressure_correction = np.reshape(pressure_correction, (self.Nz + 2 , self.Nr+2))
-
+        pressure_correction[0,:] = 0
+        pressure_correction[-1,:] = 0
+        pressure_correction[:,0] = 0
+        pressure_correction[:,-1] = 0
         return pressure_correction
 
     def velocity_corrections(self, velocity_z, velocity_r, mu, pressure_correction, relaxation_factor):
