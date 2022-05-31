@@ -9,7 +9,7 @@ class MultiFlowAxis:
 ###############################################################################
 
 
-    def __init__(self, Nz, Nr, z_end, r_end, rho_fluid, mu_0):
+    def __init__(self, Nz, Nr, z_end, r_end, rho_fluid, mu_0, inlet):
         # basic Bich variables
         self.Nz = Nz
         self.Nr = Nr
@@ -19,7 +19,8 @@ class MultiFlowAxis:
         self.dr = r_end / Nr
         self.rho_fluid = rho_fluid
         self.mu_0 = mu_0
-        self.make_boundary_conditions()
+        self.inlet = inlet
+        
 
         ### Staggered Grid Positions ##########################################
         # Center points
@@ -44,46 +45,43 @@ class MultiFlowAxis:
 
     def make_boundary_conditions(self):
 
-        # Central diagonal z-diraction
+        # Central diagonal z-direction
         diag_i_j = np.zeros((self.Nz+2, self.Nr + 2))
-        diag_i_j[:,0] = np.ones(self.Nz + 2)
-        diag_i_j[:,-1] = -1 * np.ones(self.Nz + 2)
+        diag_i_j[:,0] = 1
+        diag_i_j[0,:] = 1
+        diag_i_j[-1,:] = 1
+        diag_i_j[:,-1] = 1
         self.boundary_i_j_z = self.make_diagonal(diag_i_j)
 
-        # Central diagonal r-diraction
+        # Central diagonal r-direction
         diag_i_j = np.zeros((self.Nz+2, self.Nr + 2))
-        diag_i_j[:,0] = np.ones(self.Nz + 2)
-        diag_i_j[:,-1] = -1 * np.ones(self.Nz + 2)
+        diag_i_j[:,0] = 1
+        diag_i_j[0,:] = 1
+        diag_i_j[-1,:] = 1
+        diag_i_j[:,-1] = 1
         self.boundary_i_j_r = self.make_diagonal(diag_i_j)
 
-        # i+ diagonal (1 below central)
+        # i+ diagonal (1 above central)
         diag_iplus_j = np.zeros_like(diag_i_j)
-        diag_iplus_j[:,-1] = np.ones(self.Nz + 2)
-        diag_iplus_j[-1,:] = np.ones(self.Nr + 2)
-        self.boundary_iplus_j = self.make_diagonal(diag_iplus_j)[1:]
+        self.boundary_iplus_j = self.make_diagonal(diag_iplus_j)[:-1]
         
-        # i- diagonal (1 above central)
+        # i- diagonal (1 below central)
         diag_imin_j = np.zeros_like(diag_i_j)
-        diag_imin_j[:,0] = np.ones(self.Nz + 2)
-        diag_imin_j[0,:] = np.ones(self.Nr + 2)
-        diag_imin_j[0,0:self.Nr+2] = 0
+        # diag_imin_j[1:-1,-1] = -1
+        diag_imin_j[-1,1:-1] = -1
+        self.boundary_imin_j = self.make_diagonal(diag_imin_j)[1:]
 
-        self.boundary_imin_j = self.make_diagonal(diag_imin_j)[:-1]
-
-        # j+ diagonal (Nr + 2 below central)
+        # j+ diagonal (Nr + 2 above central)
         diag_i_jplus = np.zeros_like(diag_i_j)
-        diag_i_jplus[:,-1] = np.ones(self.Nz + 2)
-        diag_i_jplus[-1,:] = np.ones(self.Nr + 2)
+        # diag_i_jplus[0,1:-1] = 1
+        diag_i_jplus[1:-1,0] = 1
         self.boundary_i_jplus = self.make_diagonal(diag_i_jplus)[:-self.Nz-2]
 
-        # j- diagonal (Nr +2 above central)
+        # j- diagonal (Nr +2 below central)
         diag_i_jmin = np.zeros_like(diag_i_j)
-        diag_i_jmin[:,0] = np.ones(self.Nz + 2)
-        diag_i_jmin[0,:] = np.ones(self.Nr + 2)
+        # diag_i_jmin[-1,1:-1] = -1
+        diag_i_jmin[1:-1,-1] = -1
         self.boundary_i_jmin = self.make_diagonal(diag_i_jmin)[self.Nz+2:]
-
-        pressure_boundary = np.zeros_like(diag_i_j)
-
         return
 
     
@@ -141,9 +139,13 @@ class MultiFlowAxis:
 
     def calc_pressure_gradient_z(self, pressure):
         matrix = np.zeros((self.Nz + 2 , self.Nr+2))
+        print(matrix.shape)
 
         matrix[1:-1,1:-1] = 1 / self.rho_fluid * (pressure[1:-1,1:-1] * self.dr * self.RR[1:-1,1:-1] - \
                                                   pressure[:-2,1:-1]  * self.dr * self.RR[:-2,1:-1])
+        matrix[0,:] = self.inlet
+        matrix[0,-1] = 1
+        matrix[-1,-1] = 1
         pressure_gradient_z = self.make_diagonal(matrix)
 
         return pressure_gradient_z
@@ -215,11 +217,22 @@ class MultiFlowAxis:
         diffusive_z =  self.calc_diffusive_flux_z(mu)
 
         # Diagonals for matrix
+        plt.plot(convective_z[2][:-1] , label="convective")
+        plt.plot(diffusive_z[2][:-1] , label="diffusive")
+        plt.plot(self.boundary_imin_j, label="boundary")
+        plt.ylim(-2,2)
+        plt.legend()
+        # plt.show()
         diag_i_j =       convective_z[0] + diffusive_z[0] + self.boundary_i_j_z
         diag_iplus_j =  (convective_z[1] + diffusive_z[1])[1:] + self.boundary_iplus_j
         diag_imin_j =   (convective_z[2] + diffusive_z[2])[:-1] + self.boundary_imin_j
         diag_i_jplus =  (convective_z[3] + diffusive_z[3])[:-self.Nz-2] + self.boundary_i_jplus
         diag_i_jmin =   (convective_z[4] + diffusive_z[4])[self.Nz+2:] + self.boundary_i_jmin
+        # diag_i_j =       self.boundary_i_j_z
+        # diag_iplus_j =  self.boundary_iplus_j
+        # diag_imin_j =    self.boundary_imin_j
+        # diag_i_jplus =  self.boundary_i_jplus
+        # diag_i_jmin =   self.boundary_i_jmin
 
         matrix_A = sp.diags(
             diagonals=(diag_i_j, diag_imin_j, diag_iplus_j, diag_i_jmin, diag_i_jplus),
@@ -229,10 +242,21 @@ class MultiFlowAxis:
         # print(matrix_A.A)
         # Right hand side
         pressure_gradient_z = self.calc_pressure_gradient_z(pressure)
+        
 
         # Solve the matrix equation
         new_velocity_z = la.spsolve(matrix_A, pressure_gradient_z)
         new_velocity_z = np.reshape(new_velocity_z, (self.Nz + 2 , self.Nr+2))
+
+        matrix_A = sp.diags(
+            diagonals=(diag_i_j, diag_imin_j,diag_iplus_j, diag_i_jmin, diag_i_jplus),
+            offsets=(0,-1,1,-self.Nz-2, self.Nz+2)
+        )
+        matrix_A = sp.dia_matrix(matrix_A).tocsr()
+        plt.matshow(matrix_A.A, vmin=-2, vmax=2)
+        plt.colorbar()
+        plt.grid()
+        plt.show()
         return new_velocity_z
 
 
@@ -252,7 +276,6 @@ class MultiFlowAxis:
             offsets=(0,1,-1,-self.Nz-2, self.Nz+2)
         )
         matrix_A = sp.dia_matrix(matrix_A).tocsr()
-        # plt.matshow(matrix_A.A)
 
         # Right hand side
         pressure_gradient_z = self.calc_pressure_gradient_r(pressure)
