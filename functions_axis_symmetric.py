@@ -68,17 +68,17 @@ class MultiFlowAxis:
         diag_imin_j[1:-1,-1] = -1
         self.boundary_imin_j = self.make_diagonal(diag_imin_j)
 
-        # j+ diagonal (Nr + 2 above central)
+        # j+ diagonal (Nz + 2 above central)
         diag_i_jplus = np.zeros_like(diag_i_j)
         diag_i_jplus[0,1:-1] = 1
         self.boundary_i_jplus = self.make_diagonal(diag_i_jplus)
 
-        # j- diagonal z-direction (Nr +2 below central)
+        # j- diagonal z-direction (Nz +2 below central)
         diag_i_jmin = np.zeros_like(diag_i_j)
         diag_i_jmin[-1,1:-1] = -1
         self.boundary_i_jmin = self.make_diagonal(diag_i_jmin)
 
-        # j- diagonal r-direction (Nr +2 below central)
+        # j- diagonal r-direction (Nz +2 below central)
         diag_i_jmin = np.zeros_like(diag_i_j)
         diag_i_jmin[-1,1:-1] = 1
         self.boundary_i_jmin_r = self.make_diagonal(diag_i_jmin)
@@ -220,8 +220,8 @@ class MultiFlowAxis:
         diag_i_j =       convective_z[0] + diffusive_z[0] + self.boundary_i_j_z
         diag_iplus_j =  (convective_z[1] + diffusive_z[1] + self.boundary_iplus_j)[:-1]
         diag_imin_j =   (convective_z[2] + diffusive_z[2] + self.boundary_imin_j)[1:]
-        diag_i_jplus =  (convective_z[3] + diffusive_z[3] + self.boundary_i_jplus)[:-(self.Nr+2)]
-        diag_i_jmin =   (convective_z[4] + diffusive_z[4] + self.boundary_i_jmin)[self.Nr+2:]
+        diag_i_jplus =  (convective_z[3] + diffusive_z[3] + self.boundary_i_jplus)[:-(self.Nz+2)]
+        diag_i_jmin =   (convective_z[4] + diffusive_z[4] + self.boundary_i_jmin)[self.Nz+2:]
 
         # save diagonals for corrector step
         self.diagonals_corrector["diag_i_J"] = convective_z[0] + diffusive_z[0] + self.boundary_i_j_z
@@ -230,7 +230,7 @@ class MultiFlowAxis:
         # Boulding matrix
         matrix_A = sp.diags(
             diagonals=(diag_i_j, diag_imin_j, diag_iplus_j, diag_i_jmin, diag_i_jplus),
-            offsets=(0,-1,1,-(self.Nr+2), self.Nr+2)
+            offsets=(0,-1,1,-(self.Nz+2), self.Nz+2)
         )
         matrix_A = sp.dia_matrix(matrix_A).tocsr()
         # print(matrix_A.A)
@@ -257,8 +257,8 @@ class MultiFlowAxis:
         diag_i_j =       convective_z[0] + diffusive_z[0] + self.boundary_i_j_z
         diag_iplus_j =  (convective_z[1] + diffusive_z[1] + self.boundary_iplus_j)[:-1]
         diag_imin_j =   (convective_z[2] + diffusive_z[2] + self.boundary_imin_j)[1:]
-        diag_i_jplus =  (convective_z[3] + diffusive_z[3] + self.boundary_i_jplus)[:-(self.Nr+2)]
-        diag_i_jmin =   (convective_z[4] + diffusive_z[4] + self.boundary_i_jmin_r)[self.Nr+2:]
+        diag_i_jplus =  (convective_z[3] + diffusive_z[3] + self.boundary_i_jplus)[:-(self.Nz+2)]
+        diag_i_jmin =   (convective_z[4] + diffusive_z[4] + self.boundary_i_jmin_r)[self.Nz+2:]
 
         # save diagonals for corrector step
         self.diagonals_corrector["diag_I_j"] = convective_z[0] + diffusive_z[0] + self.boundary_i_j_z
@@ -267,7 +267,7 @@ class MultiFlowAxis:
         # Building matrix
         matrix_A = sp.diags(
             diagonals=(diag_i_j, diag_imin_j, diag_iplus_j, diag_i_jmin, diag_i_jplus),
-            offsets=(0,-1,1,-(self.Nr+2), self.Nr+2)
+            offsets=(0,-1,1,-(self.Nz+2), self.Nz+2)
         )
         matrix_A = sp.dia_matrix(matrix_A).tocsr()
 
@@ -298,14 +298,9 @@ class MultiFlowAxis:
         diag_iplus_J =  (convective_z[1] + diffusive_z[1] + self.boundary_iplus_j)
         
         
-        
-        
-        
         matrix = np.zeros((self.Nr+2, self.Nz+2))
 
         # Convective and diffusive in (i,j) for z-staggered
-        # convective_z_i_j, _, _, _, _ = self.calc_convective_flux_z(velocity_z, velocity_r)
-        # diffusive_z_i_j, _, _, _, _, = self.calc_diffusive_flux_z(mu)
         
         matrix[1:-1,1:-1] = (self.RR[2:,1:-1] * self.dr)**2
         diag = self.make_diagonal(matrix)
@@ -340,8 +335,8 @@ class MultiFlowAxis:
         diag_i_j =      diag_i_j
         diag_iplus_j =  (diag_iplus_j)[:-1]
         diag_imin_j =   (diag_imin_j)[1:]
-        diag_i_jplus =  (diag_i_jplus)[:-(self.Nr+2)]
-        diag_i_jmin =   (diag_i_jmin)[self.Nr+2:]
+        diag_i_jplus =  (diag_i_jplus)[:-(self.Nz+2)]
+        diag_i_jmin =   (diag_i_jmin)[self.Nz+2:]
 
 
         rhs = np.zeros_like(matrix)
@@ -352,7 +347,7 @@ class MultiFlowAxis:
 
         matrix_A = sp.diags(
             diagonals=(diag_i_j, -diag_imin_j, -diag_iplus_j, -diag_i_jmin, -diag_i_jplus),
-            offsets=(0,-1,1,-(self.Nr+2), self.Nr+2)
+            offsets=(0,-1,1,-(self.Nz+2), self.Nz+2)
         )
         print(diag_imin_j)
         print(diag_i_jmin)
