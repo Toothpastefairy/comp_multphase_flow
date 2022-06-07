@@ -180,7 +180,7 @@ class Multiflow:
         lm[mask] = kappa * self.y_wall[mask]
         # Apply damping
         if argument_type != None:
-            damping = (1 - np.exp(argument))    
+            damping = (1 - np.exp(argument))
             lm*=damping
 
         return lm
@@ -297,7 +297,7 @@ class Multiflow:
         nu_t_edge = (nu_t[:-1] + nu_t[1:]) / 2
 
         reynolds_particle = np.zeros(self.Ny)
-        f_particle = 1 + 0.5 * reynolds_particle**0.687
+        f_particle = 1 + 0.15 * reynolds_particle**0.687
 
         error = 1
         epsilon = 1e-6
@@ -314,7 +314,7 @@ class Multiflow:
 
             reynolds_particle = np.abs(velocity_particles_new - velocity_plasma[1:-1]) * self.particle_D / self.nu_0
             # print(reynolds_particle, reynolds_particle**(0.678))
-            f_particle = 1 + 0.5 * reynolds_particle**(0.678)
+            f_particle = 1 + 0.15 * reynolds_particle**(0.678)
             # print(f_particle, reynolds_particle)
 
             error = np.sum(np.abs(velocity_particles_new - velocity_particles_old)) / np.sum(velocity_particles_old)
