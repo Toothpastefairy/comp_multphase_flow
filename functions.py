@@ -206,7 +206,7 @@ class Multiflow:
         # le constants
         g = 9.81
         sigmad = 1
-        alpha2 = np.ones(self.Ny + 2)
+        alpha2 = np.zeros(self.Ny + 2)
         velocity_diff = np.abs(velocity[1:] - velocity[:-1]) / self.dy
 
         # nu
@@ -223,43 +223,53 @@ class Multiflow:
         gamma = 1 / (1 + particle_stokes)
         gamma_center = (gamma[:-1] + gamma[1:]) / 2
 
+        exponent_array = np.zeros(self.Ny+2)
         # Calculation first values
-        alpha2[0] = 1
-
-        Re_inf = (velocity[2] - velocity[1]) / self.dy * self.particle_D**2 / self.nu_0
-        nom1 = 4.21 * self.rho * self.nu_0**2 * Re_inf
-        nom2 = (self.rho - self.rho_particle) * g * np.sin(self.theta)
+        exponent_array[0] = 0
+        alpha2[int(len(alpha2)/2)] = 0.2
+            
+        nom2 = (self.rho - self.rho_particle) * g * np.cos(self.theta)
         nom3 = -self.rho_particle * (gamma_center[2] * (nu_turbulent[2]) * velocity_diff[2]) / (2 * self.dy)  
 
         denom1 = self.rho_particle * (gamma_center[0] / 2 * nu_turbulent[1] * np.abs(velocity[2] - velocity[1]) / self.dy)
         denom2 = 18 * self.nu_0 / self.particle_D**2 * self.rho * nu_turbulent[1] / sigmad
 
-        alpha2[1] = alpha2[0] * np.exp((nom1 + nom2 + nom3 / (denom1 + denom2)) * self.dy)
+        # alpha2[1] = alpha2[0] * np.exp((nom2 + nom3 / (denom1 + denom2)) * self.dy)
+        exponent_array[1] = (nom2 + nom3 / (denom1 + denom2)) * self.dy
 
         # solve alpha iteratively
         for i in range(2, self.Ny - 1):
-            Re_inf = (velocity[i+1] - velocity[i]) / self.dy * self.particle_D**2 / self.nu_0
-            nom1 = 4.21 * self.rho * self.nu_0**2 * Re_inf
-            nom2 = (self.rho - self.rho_particle) * g * np.sin(self.theta)
+
+            nom2 = (self.rho_particle - self.rho) * g * np.cos(self.theta)
             nom3 = -self.rho_particle * (gamma_center[i] * (nu_turbulent[i+1]) * velocity_diff[i+1] -
                                          (gamma_center[i-2]) / 2 *nu_turbulent[i-1] * velocity_diff[i-1]) / (2 * self.dy)  
 
             denom1 = self.rho_particle * ((gamma[i-1] + gamma[i]) / 2 * nu_turbulent[i] * np.abs(velocity[i+1] - velocity[i]) / self.dy)
             denom2 = 18 * self.nu_0 / self.particle_D**2 * self.rho * nu_turbulent[i] / sigmad
 
-            alpha2[i+1] = alpha2[i] * np.exp((nom1 + nom2 + nom3 / (denom1 + denom2)) * self.dy)
-
+            # alpha2[i+1] = alpha2[i] * np.exp((nom2 + nom3 / (denom1 + denom2)) )
+            exponent_array[i] = (nom2 + nom3 / (denom1 + denom2)) * self.dy
         # Calculation last value
         i = self.Ny
-        Re_inf = (velocity[i+1] - velocity[i]) / self.dy * self.particle_D**2 / self.nu_0
-        nom1 = 4.21 * self.rho * self.nu_0**2 * Re_inf
-        nom2 = (self.rho - self.rho_particle) * g * np.sin(self.theta)
+
+        nom2 = (self.rho_particle - self.rho) * g * np.cos(self.theta)
         nom3 = -self.rho_particle * ( -(gamma_center[i-2]) / 2 *nu_turbulent[i-1] * velocity_diff[i-1]) / (2 * self.dy)  
 
         denom1 = self.rho_particle * ((gamma[i-1] + gamma[i]) / 2 * nu_turbulent[i] * np.abs(velocity[i+1] - velocity[i]) / self.dy)
         denom2 = 18 * self.nu_0 / self.particle_D**2 * self.rho * nu_turbulent[i] / sigmad
 
-        alpha2[i] = alpha2[i-1] * np.exp((nom1 + nom2 + nom3 / (denom1 + denom2)) * self.dy)
+        # alpha2[i] = alpha2[i-1] * np.exp((nom2 + nom3 / (denom1 + denom2)) * self.dy)
+        exponent_array[-1] = (nom2 + nom3 / (denom1 + denom2)) * self.dy
+        
+        # Calculate alpha2 from exponents
+        for i in range(int(len(exponent_array)/2), len(exponent_array)-1):
+            alpha2[i+1] = alpha2[i] * np.exp(exponent_array[i])
+
+        for i in range(1, int(len(exponent_array)/2)+1)[::-1]:
+            alpha2[i-1] = alpha2[i] / np.exp(-exponent_array[i])
+
+        
+
         # no particles on impossible wall
         alpha2[self.y_wall < self.particle_D] = 0
         
@@ -303,12 +313,17 @@ class Multiflow:
         epsilon = 1e-6
         velocity_particles_old = np.copy(velocity_plasma[1:-1])
 
+        # TO_PLOT = self.rho_particle * alpha_edges[:-1] * gamma_edges[:-1] * nu_t_edge[:-1] * velocity_diff[:-1] - self.rho_particle * alpha_edges[1:] * gamma_edges[1:] * nu_t_edge[1:] * velocity_diff[1:]
+        
+        # plt.plot(TO_PLOT)
+        # plt.show()
+
         i = 0
         while error > epsilon:
             velocity_particles_new = velocity_plasma[1:-1] - (1 / (18 * alpha_particles[1:-1] * f_particle * self.nu_0 / self.particle_D**2)) * \
                                  (self.rho_particle * alpha_edges[:-1] * gamma_edges[:-1] * nu_t_edge[:-1] * velocity_diff[:-1]
                                  - self.rho_particle * alpha_edges[1:] * gamma_edges[1:] * nu_t_edge[1:] * velocity_diff[1:]
-                                 + alpha_particles[1:-1] * (self.rho_particle - self.rho) * g * np.cos(self.theta))
+                                 + alpha_particles[1:-1] * (self.rho_particle - self.rho) * g * np.sin(self.theta))
 
             velocity_particles_new[alpha_particles[1:-1] == 0] = 0
 
