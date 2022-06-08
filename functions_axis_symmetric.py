@@ -381,10 +381,11 @@ class MultiFlowAxis:
             offsets=(0,-1,1,-(self.Nz+2), self.Nz+2)
         )
         matrix_A = sp.dia_matrix(matrix_A).tocsr()
-        # plt.matshow(matrix_A.A, vmin=-1.5, vmax=1.5)#, norm=LogNorm(np.min(np.log10(matrix_A)), np.max(np.log10(matrix_A))))
+        # plt.matshow(matrix_A.A, vmin=-.1, vmax=.1)#, norm=LogNorm(np.min(np.log10(matrix_A)), np.max(np.log10(matrix_A))))
+        # plt.xticks([])
+        # plt.yticks([])
         # plt.colorbar()
-    
-        # print(matrix_A.A)
+        # plt.show()
         # Right hand side
         pressure_gradient_z = self.calc_pressure_gradient_z(pressure, velocity_z, velocity_r)
         
@@ -428,11 +429,18 @@ class MultiFlowAxis:
 
 
     def pressure_correction(self, velocity_z, velocity_r, mu):
+        u = velocity_z
+        v = velocity_r
         # R-direction
         diags = self.calc_diagonals_r(velocity_z, velocity_r, mu / self.rho_fluid)
 
         # Diagonals for matrix
         diag_I_j =       diags[0] + self.boundary_i_j_z
+        dummy_matrix = np.zeros((self.Nr+2, self.Nz+2))
+        dummy_matrix[1:-1,1:-1] += -1 * self.RZ[1:-1,1:-1] * (-1/4 * u[1:-1,:-2]**2 - 1/2 * u[1:-1,2:] * u[1:-1,1:-1] - 1/4 * u[1:-1,2:]**2 )
+        dummy_matrix[1:-1,1:-1] += -1 * self.RZ[1:-1,1:-1] * (-1/4 * u[1:-1,1:-1]**2 - 1/2 * u[1:-1,1:-1] * u[1:-1,:-2] - 1/4 * u[1:-1,1:-1]**2 ) * -1
+        diag_I_j -= self.make_diagonal(dummy_matrix)
+
         diag_I_jplus =  (diags[3] + self.boundary_i_jplus)
         
         # Z-direction
@@ -440,6 +448,11 @@ class MultiFlowAxis:
 
         # Diagonals for matrix
         diag_i_J =       diags[0] + self.boundary_i_j_z
+        dummy_matrix = np.zeros((self.Nr+2, self.Nz+2))
+        dummy_matrix[1:-1,1:-1] += -1* self.dz * (-1/4 * v[1:-1,1:-1]**2 - 1/2 * v[1:-1,1:-1] * v[2:,1:-1] - 1/4 * v[2:,1:-1])
+        dummy_matrix[1:-1,1:-1] += -1* self.dz * (-1/4 * v[1:-1,1:-1]**2 - 1/2 * v[1:-1,1:-1] * v[:-2,1:-1] - 1/4 * v[:-2,1:-1]) * -1
+        diag_i_J -= self.make_diagonal(dummy_matrix)
+
         diag_iplus_J =  (diags[1] + self.boundary_iplus_j)
         
         
@@ -448,6 +461,7 @@ class MultiFlowAxis:
         # Convective and diffusive in (i,j) for z-staggered
         
         matrix[1:-1,1:-1] = (self.RR[2:,1:-1] * self.dr)**2
+        
         diag = self.make_diagonal(matrix)
         diag_imin_j = np.zeros(len(diag))
         diag_imin_j[diag_i_J!=0] = diag[diag_i_J!=0] / diag_i_J[diag_i_J!=0]
@@ -494,9 +508,9 @@ class MultiFlowAxis:
         # print(diag_i_jmin)
 
         matrix_A = sp.dia_matrix(matrix_A).tocsr()
-        # plt.matshow(matrix_A.A, vmin=-2, vmax=2)
-        # plt.colorbar()
-        # plt.show()
+        plt.matshow(matrix_A.A, vmin=-2, vmax=2)
+        plt.colorbar()
+        plt.show()
 
         pressure_correction = la.spsolve(matrix_A, rhs)
         pressure_correction = np.reshape(pressure_correction, (self.Nr+2, self.Nz+2))

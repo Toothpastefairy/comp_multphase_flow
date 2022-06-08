@@ -277,6 +277,10 @@ class Multiflow:
         factor = 1 / self.y_end * self.dy * np.trapz(alpha2) / self.volume_fraction
         alpha2 /= factor
 
+        # make sure not biggger than 1
+        if np.max(alpha2) > 1:
+            alpha2 /= np.max(alpha2) / 0.9
+
         return alpha2
 
 
